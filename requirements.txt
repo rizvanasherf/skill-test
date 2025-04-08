@@ -1,0 +1,7 @@
+streamlit
+pdfplumber
+python-docx
+openai
+pyttsx3
+python-dotenv
+ffmpeg-python

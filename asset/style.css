@@ -1,0 +1,75 @@
+
+.main {
+        background-color: #222222;
+        color: #9F9EA1;
+    }
+    
+h1, h2, h3 {
+        color: #9F9EA1 !important;
+    }
+.stButton {
+        display: flex;
+        justify-content: flex-end; 
+        padding-top: 20px;
+    }
+    
+.stButton > button {
+        background-color: #444444;
+        color: #CCCCCC;
+        border: 1px solid #666666;
+    }
+    
+.stButton > button:hover {
+        background-color: #555555;
+        color: #FFFFFF;
+        border: 1px solid #888888;
+    }
+    
+.uploadedFile {
+        background-color: #333333 !important;
+        color: #9F9EA1 !important;
+        border: 1px solid #666666 !important;
+        padding-top: 20px;
+    }
+label[data-testid="stFileUploaderLabel"] {
+        display: none;
+    }
+
+.stTextArea textarea {
+        background-color: #333333;
+        color: #9F9EA1;
+    }
+     
+.main-title {
+        text-align: center;
+        font-size: 48px;
+        font-weight: bold;
+        color: #9F9EA1 !important;
+        margin-bottom: 20px;
+    }
+    
+.silver-text {
+        color: #9F9EA1;
+    }
+.big-timer {
+    font-size: 26px;
+    text-align: center;
+    position: fixed;
+    top: 50px;
+    right: 20px;
+    margin-top: 20px;
+    font-family: 'Courier New', monospace;
+    color: #9d50ff;
+    text-shadow: 0 0 4px #9d50ff;
+    padding: 6px 10px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 999;
+}
+.video-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
