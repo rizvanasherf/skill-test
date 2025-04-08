@@ -1,4 +1,4 @@
-import pdfplumber 
+import pdfplumber
 import os
 import docx
 import re
@@ -16,66 +16,94 @@ import pyttsx3
 import threading
 
 
+# ==============================================
+# Configuration and Initialization
+# ==============================================
 
-load_dotenv() 
+load_dotenv()
 
 _GLOBAL_LLM_CLIENT = None
-
 whisper_model = whisper.load_model("base")
 
+
+# ==============================================
+# Audio Processing Functions
+# ==============================================
+
 def save_audio_to_wav(audio_segment):
+    """Convert audio segment to WAV format and save to temporary file.
+    
+    Args:
+        audio_segment: AudioSegment object to be converted
+        
+    Returns:
+        str: Path to temporary WAV file
+    """
     wav_io = io.BytesIO()
     audio_segment.export(wav_io, format="wav")
     wav_io.seek(0)
 
-    # Save the audio to a temporary .wav file
     temp_wav = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
     with open(temp_wav.name, 'wb') as f:
         f.write(wav_io.read())
 
     return temp_wav.name
 
+
 def transcribe_audio(audio_path):
+    """Transcribe audio file using Whisper model.
+    
+    Args:
+        audio_path (str): Path to audio file
+        
+    Returns:
+        str: Transcribed text or error message
+    """
     try:
         result = whisper_model.transcribe(audio_path)
         return result['text']
     except Exception as e:
         return f"Transcription failed: {str(e)}"
     finally:
-        # Clean up
         if os.path.exists(audio_path):
             os.remove(audio_path)
-    
+
+
+# ==============================================
+# LLM Configuration and API Calls
+# ==============================================
+
 def configure_llm():
     """Configure and validate API key for LLM.
     
     Returns:
-    - str: The Open AI client 
+        OpenAI: The Open AI client 
     
     Raises:
-    - ValueError: If the API key is not found in the environment variables.
+        ValueError: If the API key is not found in the environment variables.
     """
     global _GLOBAL_LLM_CLIENT
     
     api_key = os.getenv("XAI_API_KEY")
     if not api_key:
         raise ValueError("API key not found")
+        
     _GLOBAL_LLM_CLIENT = OpenAI(
         api_key=api_key,
         base_url="https://api.x.ai/v1"
     )
     return _GLOBAL_LLM_CLIENT
-    
+
+
 def call_grok(prompt, max_retries=3):
-    """
-    Synchronous Grok API call with retries.
-
+    """Synchronous Grok API call with retries.
+    
     Args:
-    - prompt (str): The prompt to send.
-    - max_retries (int): Number of retry attempts on failure.
-
+        prompt (str): The prompt to send
+        max_retries (int): Number of retry attempts on failure
+        
     Returns:
-    - str: Response content or error message.
+        str: Response content or error message
     """
     global _GLOBAL_LLM_CLIENT
 
@@ -115,42 +143,72 @@ def call_grok(prompt, max_retries=3):
 
     return "Failed to get a response after multiple attempts."
 
+
+# ==============================================
+# Document Processing Functions
+# ==============================================
+
 def extract_text_from_pdf(file):
+    """Extract text content from PDF file.
+    
+    Args:
+        file: PDF file object
+        
+    Returns:
+        str: Extracted text
+    """
     text = ""
     with pdfplumber.open(file) as pdf:
         for page in pdf.pages:
             text += page.extract_text() + "\n"
     return text
 
+
 def extract_text_from_docx(file):
+    """Extract text content from DOCX file.
+    
+    Args:
+        file: DOCX file object
+        
+    Returns:
+        str: Extracted text
+    """
     doc = docx.Document(file)
     return "\n".join([para.text for para in doc.paragraphs])
 
+
+# ==============================================
+# Resume Parsing and Data Extraction
+# ==============================================
+
 def extract_keywords(text):
-    data = defaultdict(list)
+    """Extract structured information from resume text.
     
+    Args:
+        text (str): Raw resume text
+        
+    Returns:
+        dict: Structured resume data
+    """
+    data = defaultdict(list)
     text_lower = text.lower()
     
-    # Extract contact information first
-    # Name extraction - typically appears at the top of resume
+    # Extract contact information
     name_pattern = r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)'
     name_match = re.search(name_pattern, text.strip())
     if name_match:
         data['name'] = name_match.group(0).strip()
     
-    # Email extraction - look for standard email format
     email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
     email_match = re.search(email_pattern, text)
     if email_match:
         data['email'] = email_match.group(0).strip()
     
-    # Phone number extraction - handles various formats
-    # This pattern covers common formats like (123) 456-7890, 123-456-7890, 123.456.7890, etc.
     phone_patterns = [
-        r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',  # US/Canada: (123) 456-7890 or 123-456-7890
-        r'\+\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}',  # International: +1 123-456-7890
-        r'\+\d{1,3}[-.\s]?\d{10,12}',  # International compact: +11234567890
-        r'\d{10,12}'  # Simple 10-12 digit number
+        r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',
+        r'\+\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}',
+        r'\+\d{1,3}[-.\s]?\d{10,12}',
+        r'\d{10,12}'
     ]
     
     for pattern in phone_patterns:
@@ -159,13 +217,12 @@ def extract_keywords(text):
             data['phone'] = phone_match.group(0).strip()
             break
     
-    # LinkedIn URL extraction (common in modern resumes)
     linkedin_pattern = r'linkedin\.com/in/[A-Za-z0-9_-]+'
     linkedin_match = re.search(linkedin_pattern, text)
     if linkedin_match:
         data['linkedin'] = linkedin_match.group(0).strip()
     
-    # Original skills extraction code
+    # Skills extraction
     ds_ml_keywords = {
         'programming': ['python', 'r', 'sql', 'scala', 'julia', 'java', 'c++'],
         'ml_frameworks': ['tensorflow', 'pytorch', 'keras', 'scikit-learn', 'spark ml', 'mxnet'],
@@ -189,11 +246,13 @@ def extract_keywords(text):
             data['skills'].extend(found_keywords)
             data[f'ds_ml_{category}'] = found_keywords
     
+    # Education extraction
     education_pattern = r'(education|academic background|qualifications|degrees?)(.*?)(?=(work|experience|projects|skills|$)|\n\n)'
     education_match = re.search(education_pattern, text_lower, re.DOTALL | re.IGNORECASE)
     if education_match:
         data['education'] = education_match.group(2).strip()
     
+    # Projects extraction
     projects_pattern = r'(projects|personal projects|work samples|selected projects)(.*?)(?=(work|experience|education|skills|$)|\n\n)'
     projects_match = re.search(projects_pattern, text_lower, re.DOTALL | re.IGNORECASE)
     if projects_match:
@@ -211,6 +270,7 @@ def extract_keywords(text):
                 ml_projects.append(project)
         data['ml_projects'] = ml_projects
     
+    # Experience extraction
     experience_pattern = r'(experience|work history|employment)(.*?)(?=(projects|education|skills|$)|\n\n)'
     experience_match = re.search(experience_pattern, text_lower, re.DOTALL | re.IGNORECASE)
     if experience_match:
@@ -224,7 +284,7 @@ def extract_keywords(text):
                 ds_exp.append(line.strip())
         data['ds_experience'] = ds_exp
     
-    # Try to extract a summary or objective statement if present
+    # Summary extraction
     summary_pattern = r'(summary|objective|profile|about me)(.*?)(?=(education|experience|projects|skills|$)|\n\n)'
     summary_match = re.search(summary_pattern, text_lower, re.DOTALL | re.IGNORECASE)
     if summary_match:
@@ -232,7 +292,16 @@ def extract_keywords(text):
     
     return dict(data)
 
+
 def extract_resume_data(uploaded_file):
+    """Process uploaded resume file and extract structured data.
+    
+    Args:
+        uploaded_file: File object to process
+        
+    Returns:
+        dict: Extracted resume data or error message
+    """
     file_type = uploaded_file.name.split('.')[-1].lower()
     
     try:
@@ -256,12 +325,20 @@ def extract_resume_data(uploaded_file):
     except Exception as e:
         return {"error": str(e)}
 
+
+# ==============================================
+# Interview Question Generation
+# ==============================================
+
 def generate_llm_questions(extracted_data, total_questions=None):
-    """
-    Generate interview questions with varying difficulty levels based on extracted resume data.
-    60% technical skills (evenly distributed across difficulty levels)
-    20% projects-based questions
-    20% experience-based questions
+    """Generate interview questions based on resume data.
+    
+    Args:
+        extracted_data (dict): Structured resume data
+        total_questions (int): Total number of questions to generate
+        
+    Returns:
+        list: Generated interview questions
     """
     context = {
         'skills': extracted_data.get('skills', []),
@@ -269,7 +346,6 @@ def generate_llm_questions(extracted_data, total_questions=None):
         'experience': extracted_data.get('ds_experience', [])
     }
     
-    # Categorize skills by domain to create more specific questions
     skill_categories = {
         'programming': [s for s in context['skills'] if s in extracted_data.get('ds_ml_programming', [])],
         'ml_frameworks': [s for s in context['skills'] if s in extracted_data.get('ds_ml_ml_frameworks', [])],
@@ -289,7 +365,6 @@ def generate_llm_questions(extracted_data, total_questions=None):
             if skills:
                 sampled_skills = random.sample(skills, k=random.randint(1, len(skills)))
                 
-                # Create targeted prompts for different difficulty levels
                 if difficulty == "beginner":
                     prompt = f"""Generate {questions_per_level} beginner-level technical interview questions for a Data Science role.
                         Focus on foundational concepts and core principles related to the following skills: {', '.join(sampled_skills)}.
@@ -345,7 +420,6 @@ def generate_llm_questions(extracted_data, total_questions=None):
     
     # Ensure we have enough questions
     if len(all_questions) < total_questions:
-        # Generate general data science questions to fill the gap
         remaining = total_questions - len(all_questions)
         general_prompt = f"""Generate {remaining} general data science interview questions of varying difficulty.
         Include questions about methodology, model evaluation, and industry best practices.
@@ -361,34 +435,95 @@ def generate_llm_questions(extracted_data, total_questions=None):
     unique_questions = []
     
     for q in all_questions:
-        # Remove numbering at the beginning of questions
         clean_q = re.sub(r'^\d+[\.\)\-]\s*', '', q)
-        # Get core question text for deduplication
         core_q = re.sub(r'^\[[A-Z]+\]\s*', '', clean_q).lower()
         
-        if core_q not in seen and len(core_q) > 20:  # Avoid very short questions
+        if core_q not in seen and len(core_q) > 20:
             seen.add(core_q)
             unique_questions.append(clean_q)
     
-    # Shuffle questions to mix difficulty levels and types
     random.shuffle(unique_questions)
     
     return unique_questions[:total_questions]
 
+
+# ==============================================
+# Utility Functions
+# ==============================================
+
 def uniquequestion(text):
+    """Dummy function for testing question generation.
+    
+    Args:
+        text: Unused input
+        
+    Returns:
+        list: Fixed set of dummy questions
+    """
     dummy_questions = [
-    "What is the game loop? Explain its components",
-    "What is collision detection and how is it implemented",
-    "What are coroutines and where would you use them in Unity"
-]
+        "What is the game loop? Explain its components",
+        "What is collision detection and how is it implemented",
+        "What are coroutines and where would you use them in Unity"
+    ]
     return dummy_questions
 
+
 def text_to_speech(text):
+    """Convert text to speech in a background thread.
+    
+    Args:
+        text (str): Text to be spoken
+    """
     def run():
         engine = pyttsx3.init()
         engine.setProperty('rate', 160)
         engine.say(text)
         engine.runAndWait()
     threading.Thread(target=run).start()
+
+
+# ==============================================
+# Scoring and Evaluation Functions
+# ==============================================
+
+def score_check(answer, question):
+    """Evaluate answer to interview question.
     
-# def Progress_checking()
+    Args:
+        answer (str): Candidate's answer
+        question (str): Interview question
+        
+    Returns:
+        str: Score from 1-10
+    """
+    prompt = f"""
+    You are a Professional Data Scientis.
+    Evaluate the following answer to the interview question.
+    
+    Question: {question}
+    Answer: {answer}
+
+    Give a score from 1 to 10 (10 being the best).dont give any extra . just return the score.
+    """
+    
+    response = call_grok(prompt)
+    return response
+
+
+def calculate_score(answers):
+    """Calculate total score and percentage from answers.
+    
+    Args:
+        answers (list of dict): Each dictionary should contain a 'score' key
+        
+    Returns:
+        tuple: (total_score, percentage)
+    """
+    if not answers:
+        return 0, 0.0
+
+    total_score = sum([int(ans.get("score", 0)) for ans in answers])
+    total_questions = len(answers)
+    percentage = (total_score / (total_questions * 10)) * 100  
+
+    return total_score, percentage

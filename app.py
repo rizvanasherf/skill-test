@@ -3,8 +3,8 @@ import time
 import io
 from datetime import datetime, timedelta
 from audiorecorder import audiorecorder
-from utils import extract_resume_data,generate_llm_questions,uniquequestion
-from utils import transcribe_audio,save_audio_to_wav,text_to_speech
+from utils import extract_resume_data,generate_llm_questions,uniquequestion,calculate_score
+from utils import transcribe_audio,save_audio_to_wav,text_to_speech,score_check
 
 
 
@@ -106,17 +106,45 @@ def upload_page():
 
         if uploaded_file:
             st.session_state['uploaded_cv'] = uploaded_file
-            st.success("CV uploaded successfully!")
             
             extracted = extract_resume_data(uploaded_file)
             st.session_state['extracted_data'] = extracted
             
-            st.session_state['current_page'] = 'test_page'
+            st.session_state['questions'] = uniquequestion('abc')
+            
+            st.session_state['current_page'] = 'instructions_page'
             st.rerun()
             
         if st.button("Back to Home"):
             st.session_state['current_page'] = 'home'
             st.rerun()
+            
+def instructions_page():
+    extracted_data = st.session_state.get('extracted_data')
+    if not extracted_data:
+        st.warning("No resume data found. Please upload your CV first.")
+        return
+
+    st.markdown(f"<h1 class='main-title'>Welcome {extracted_data['name']}<span style='color:#9d50ff'>..!</span></h1>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: 1px solid gray;'>", unsafe_allow_html=True)
+    st.markdown("""
+    <div class="instruction-text">
+        <p><strong>Please read the instructions carefully before you begin:</strong></p>
+        <p>You will be presented with questions one by one based on your CV.</p>
+        <p>Each question has a 2-minute time limit to answer via voice.</p>
+        <p>Press <strong>Start Recording</strong> to begin speaking your answer.</p>
+        <p>Press <strong>Save and Next</strong> for the next question.</p>
+        <p>You can skip questions if you're not ready or don’t know the answer.</p>
+        <p>Make sure your microphone is active and permissions are enabled.</p>
+        <p>If the test crashes or closes, you can start from the beginning.</p>
+        <p style='margin-top: 30px; font-weight: bold;'>When you're ready, click the <em>Start Test</em> button below!</p>
+        <p><strong>Be in a quiet plcae for Best Performance:</strong></p>
+    </div>
+""", unsafe_allow_html=True)
+
+    if st.button("Start Test"):
+        st.session_state['current_page'] = 'test_page'
+        st.rerun()
             
 def test_page():
     
@@ -127,10 +155,9 @@ def test_page():
     
     st.markdown(f"<h1 class='main-title'>Welcome {extracted_data['name']} </h1>", unsafe_allow_html=True)
     st.markdown("---")            
-    st.markdown("### Generated Interview Questions:")
-    st.json(extracted_data)
+    
 
-    questions = uniquequestion('abc')
+    questions = st.session_state.get('questions', [])
     
     if "answers" not in st.session_state:
         st.session_state.answers = []  
@@ -147,7 +174,7 @@ def test_page():
     current_time = datetime.now()
     last_time = datetime.fromisoformat(st.session_state.last_display_time)
     time_elapsed = current_time - last_time
-    time_remaining = timedelta(minutes=1) - time_elapsed
+    time_remaining = timedelta(minutes=2) - time_elapsed
 
     if st.session_state.question_index < len(questions):
         question = questions[st.session_state.question_index]
@@ -180,28 +207,34 @@ def test_page():
                     audio_file_path = save_audio_to_wav(audio)
                     audio_buffer = io.BytesIO()
                     audio.export(audio_buffer, format="wav")
-                    st.audio(audio_buffer, format="audio/wav")
-
+                    
                     if st.button("Save & Next", key=f"save_{st.session_state.question_index}"):
                         transcript = transcribe_audio(audio_file_path)
+                        score  = score_check(transcript,question)
                         st.session_state.answers.append({
                             "question": question,
-                            "transcript": transcript
+                            "transcript": transcript,
+                            "score": score
                         })
                         st.session_state.question_index += 1
                         st.session_state.last_display_time = datetime.now().isoformat()
                         st.session_state.spoken = False
                         st.rerun()
-
+                    
+                    st.audio(audio_buffer, format="audio/wav")
         with col3:
             if st.button("⏭ Skip", key=f"next_{st.session_state.question_index}"):
+                st.session_state.answers.append({
+                            "question": question,
+                            "transcript": " "
+                        })
                 st.session_state.question_index += 1
                 st.session_state.last_display_time = datetime.now().isoformat()
                 st.session_state.spoken = False
                 st.rerun()
 
         # Styled timer
-        if time_elapsed < timedelta(minutes=1):
+        if time_elapsed < timedelta(minutes=2):
             seconds_left = int(time_remaining.total_seconds())
             mins, secs = divmod(seconds_left, 60)
             st.markdown(f"""
@@ -219,17 +252,31 @@ def test_page():
             st.session_state.spoken = False
             st.rerun()
     else:
-        st.write("All questions completed!")
-        for i, answer in enumerate(st.session_state.answers):
-            st.markdown(f"**Q{i+1}: {answer['question']}**")
-            st.markdown(f"**Your Answer:** {answer['transcript']}**")
-            st.markdown("---")
+        st.markdown(f"<h1 class='silver-text'>Sucessfuly completed your test</h1>", unsafe_allow_html=True)
+        total_score, percentage = calculate_score(st.session_state.answers)
+        st.markdown(f"""
+            <div style='text-align: center; font-size: 28px; font-weight: bold; color: 9d50ff; margin-top: 20px;'>
+                Your Final Score: {total_score} / {len(st.session_state.answers) * 10}<br>
+                Percentage: {percentage:.2f}%
+            </div>
+            """, unsafe_allow_html=True)
+        st.markdown("---")
+
+        if st.button("Return to Home"):
+            st.session_state.current_page = "home"
+            st.session_state.question_index = 0
+            st.session_state.spoken = False
+            st.session_state.last_display_time = datetime.now().isoformat()
+            st.session_state.answers = []
+            st.rerun()
 
 def main():
     if st.session_state['current_page'] == 'home':
         home_page()
     elif st.session_state['current_page'] == 'upload':
         upload_page()
+    elif st.session_state.get('current_page') == 'instructions_page':
+        instructions_page()
     elif st.session_state.get('current_page') == 'test_page':
         test_page()
 
