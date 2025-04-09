@@ -102,7 +102,7 @@ This is an interactive Streamlit-based web app where candidates can upload their
 - [Streamlit](https://streamlit.io/)
 - [Pydub](https://github.com/jiaaro/pydub)
 - [PostgreSQL](https://www.postgresql.org/)
-- [OpenAI Whisper](https://github.com/openai/whisper) (or your own STT engine)
+- [OpenAI Whisper](https://github.com/openai/whisper) 
 
 ---
 
