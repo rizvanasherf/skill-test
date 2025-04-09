@@ -1,7 +1,7 @@
 
 ---
 
-```markdown
+
 # 🎙️ Interview Test Platform
 
 This is an interactive Streamlit-based web app where candidates can upload their CVs, answer audio-based interview questions, and receive scores based on their spoken responses. The app evaluates candidate performance and stores results in a PostgreSQL database.
@@ -112,5 +112,5 @@ For support or collaboration, contact: [rizvanwork293@gmail.com.com](mailto:rizv
 
 ---
 
-```
+
 
