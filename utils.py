@@ -14,6 +14,9 @@ import whisper
 import io
 import pyttsx3
 import threading
+import psycopg2
+from psycopg2 import sql
+from datetime import datetime
 
 
 # ==============================================
@@ -527,3 +530,49 @@ def calculate_score(answers):
     percentage = (total_score / (total_questions * 10)) * 100  
 
     return total_score, percentage
+
+def save_candidate_results(candidate_name, email, score, total, percentage, conn_params):
+    """
+    Save the candidate's result details into a PostgreSQL database.
+
+    Parameters:
+    - candidate_name (str): The full name of the candidate.
+    - email (str): Candidate's email address.
+    - score (int): Total score obtained.
+    - total (int): Maximum possible score.
+    - percentage (float): Percentage obtained.
+    - conn_params (dict): Dictionary with PostgreSQL connection parameters.
+    """
+
+    try:
+        conn = psycopg2.connect(**conn_params)
+        cur = conn.cursor()
+
+        # Create table if not exists
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS candidate_results (
+                id SERIAL PRIMARY KEY,
+                candidate_name TEXT NOT NULL,
+                email TEXT,
+                score INTEGER,
+                total INTEGER,
+                percentage REAL,
+                submission_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
+        # Insert candidate data
+        insert_query = """
+            INSERT INTO candidate_results (candidate_name, email, score, total, percentage)
+            VALUES (%s, %s, %s, %s, %s);
+        """
+        cur.execute(insert_query, (candidate_name, email, score, total, percentage))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        print("Candidate results saved successfully.")
+
+    except Exception as e:
+        print(f"Error saving to database: {e}")
